@@ -395,6 +395,13 @@
             {{ object.content | clean_html(object) | safe }}
         </div>
 
+    {% if object.quoted_object %}
+        <div class="ap-object-expanded ap-quoted-object">
+        {{ display_object(object.quoted_object) }}
+        </div>
+    {% endif %}
+
+
     {% if object.ap_type == "Question" %}
         {% set can_vote = is_admin and object.is_from_inbox and not object.is_poll_ended and not object.voted_for_answers %}
         {% if can_vote %}

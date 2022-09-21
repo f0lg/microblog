@@ -2,9 +2,11 @@ import hashlib
 from datetime import datetime
 from functools import cached_property
 from typing import Any
+from typing import Optional
 
 import pydantic
 from bs4 import BeautifulSoup  # type: ignore
+from loguru import logger
 from markdown import markdown
 
 from app import activitypub as ap
@@ -73,6 +75,10 @@ class Object:
     @property
     def tags(self) -> list[ap.RawObject]:
         return ap.as_list(self.ap_object.get("tag", []))
+
+    @property
+    def quote_url(self) -> str | None:
+        return self.ap_object.get("quoteUrl")
 
     @cached_property
     def inlined_images(self) -> set[str]:
@@ -278,9 +284,15 @@ class Attachment(BaseModel):
 
 
 class RemoteObject(Object):
-    def __init__(self, raw_object: ap.RawObject, actor: Actor):
+    def __init__(
+        self,
+        raw_object: ap.RawObject,
+        actor: Actor,
+        quoted_object: Object | None = None,
+    ):
         self._raw_object = raw_object
         self._actor = actor
+        self._quoted_object = quoted_object
 
         if self._actor.ap_id != ap.get_actor_id(self._raw_object):
             raise ValueError(f"Invalid actor {self._actor.ap_id}")
@@ -290,6 +302,7 @@ class RemoteObject(Object):
         cls,
         raw_object: ap.RawObject,
         actor: Actor | None = None,
+        fetch_quoted_url: bool = True,
     ):
         # Pre-fetch the actor
         actor_id = ap.get_actor_id(raw_object)
@@ -306,7 +319,17 @@ class RemoteObject(Object):
                 ap_actor=await ap.fetch(ap.get_actor_id(raw_object)),
             )
 
-        return cls(raw_object, _actor)
+        quoted_object: Object | None = None
+        if quote_url := raw_object.get("quoteUrl"):
+            try:
+                quoted_object = await RemoteObject.from_raw_object(
+                    await ap.fetch(quote_url),
+                    fetch_quoted_url=fetch_quoted_url,
+                )
+            except Exception:
+                logger.exception(f"Failed to fetch {quote_url=}")
+
+        return cls(raw_object, _actor, quoted_object=quoted_object)
 
     @property
     def og_meta(self) -> list[dict[str, Any]] | None:
@@ -319,3 +342,9 @@ class RemoteObject(Object):
     @property
     def actor(self) -> Actor:
         return self._actor
+
+    @property
+    def quoted_object(self) -> Optional["RemoteObject"]:
+        if self._quoted_object:
+            return self._quoted_object
+        return None

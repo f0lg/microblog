@@ -66,7 +66,8 @@ async def external_urls(
     tags_hrefs = set()
     for tag in ro.tags:
         if tag_href := tag.get("href"):
-            tags_hrefs.add(tag_href)
+            if tag_href and tag_href not in filter(None, [ro.quote_url]):
+                tags_hrefs.add(tag_href)
         if tag.get("type") == "Mention":
             if tag["href"] != LOCAL_ACTOR.ap_id:
                 mentioned_actor = await fetch_actor(db_session, tag["href"])

@@ -113,6 +113,18 @@ class InboxObject(Base, BaseObject):
         uselist=False,
     )
 
+    quoted_inbox_object_id = Column(
+        Integer,
+        ForeignKey("inbox.id", name="fk_quoted_inbox_object_id"),
+        nullable=True,
+    )
+    quoted_inbox_object: Mapped[Optional["InboxObject"]] = relationship(
+        "InboxObject",
+        foreign_keys=quoted_inbox_object_id,
+        remote_side=id,
+        uselist=False,
+    )
+
     undone_by_inbox_object_id = Column(Integer, ForeignKey("inbox.id"), nullable=True)
 
     # Link the oubox AP ID to allow undo without any extra query
@@ -146,6 +158,12 @@ class InboxObject(Base, BaseObject):
     @property
     def is_from_inbox(self) -> bool:
         return True
+
+    @property
+    def quoted_object(self) -> Optional["InboxObject"]:
+        if self.quoted_inbox_object_id:
+            return self.quoted_inbox_object
+        return None
 
 
 class OutboxObject(Base, BaseObject):
@@ -280,6 +298,10 @@ class OutboxObject(Base, BaseObject):
     @property
     def is_from_outbox(self) -> bool:
         return True
+
+    @property
+    def quoted_object(self) -> Optional["InboxObject"]:
+        return None
 
 
 class Follower(Base):

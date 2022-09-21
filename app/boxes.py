@@ -1576,8 +1576,11 @@ async def _process_note_object(
     from_actor: models.Actor,
     ro: RemoteObject,
     forwarded_by_actor: models.Actor | None = None,
-) -> None:
-    if parent_activity.ap_type not in ["Create", "Read"]:
+    process_quoted_url: bool = True,
+) -> models.InboxObject:
+    if process_quoted_url and parent_activity.quote_url == ro.ap_id:
+        logger.info(f"Processing quoted URL for {parent_activity.ap_id}")
+    elif parent_activity.ap_type not in ["Create", "Read"]:
         raise ValueError(f"Unexpected parent activity {parent_activity.ap_id}")
 
     ap_published_at = now()
@@ -1620,6 +1623,7 @@ async def _process_note_object(
         ),
         # We may already have some replies in DB
         replies_count=await _get_replies_count(db_session, ro.ap_id),
+        quoted_inbox_object_id=None,
     )
 
     db_session.add(inbox_object)
@@ -1699,6 +1703,28 @@ async def _process_note_object(
             inbox_object_id=inbox_object.id,
         )
         db_session.add(notif)
+
+    await db_session.flush()
+
+    if ro.quote_url and process_quoted_url:
+        try:
+            quoted_raw_object = await ap.fetch(ro.quote_url)
+            quoted_object_actor = await fetch_actor(
+                db_session, ap.get_actor_id(quoted_raw_object)
+            )
+            quoted_ro = RemoteObject(quoted_raw_object, quoted_object_actor)
+            quoted_inbox_object = await _process_note_object(
+                db_session,
+                inbox_object,
+                from_actor=quoted_object_actor,
+                ro=quoted_ro,
+                process_quoted_url=False,
+            )
+            inbox_object.quoted_inbox_object_id = quoted_inbox_object.id
+        except Exception:
+            logger.exception("Failed to process quoted object")
+
+    return inbox_object
 
 
 async def _handle_vote_answer(
