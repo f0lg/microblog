@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 import httpx
 from fastapi import APIRouter
@@ -145,6 +146,57 @@ async def get_lookup(
             "ap_object": ap_object,
             "actors_metadata": actors_metadata,
             "error": error,
+        },
+    )
+
+
+@router.get("/search")
+async def admin_search(
+    request: Request,
+    query: str | None = None,
+    db_session: AsyncSession = Depends(get_db_session),
+) -> templates.TemplateResponse | RedirectResponse:
+
+    results: list[Any] = []
+    if query:
+        results = (
+            (
+                await db_session.execute(
+                    select(models.OutboxObject)
+                    .join(
+                        models.outbox_fts,
+                        models.outbox_fts.c.rowid == models.OutboxObject.id,
+                    )
+                    .options(
+                        joinedload(
+                            models.OutboxObject.outbox_object_attachments
+                        ).options(joinedload(models.OutboxObjectAttachment.upload)),
+                        joinedload(models.OutboxObject.relates_to_inbox_object).options(
+                            joinedload(models.InboxObject.actor),
+                        ),
+                        joinedload(
+                            models.OutboxObject.relates_to_outbox_object
+                        ).options(
+                            joinedload(
+                                models.OutboxObject.outbox_object_attachments
+                            ).options(joinedload(models.OutboxObjectAttachment.upload)),
+                        ),
+                    )
+                    .where(models.outbox_fts.c.outbox_fts.op("MATCH")(query))
+                    .limit(20)
+                )
+            )  # type: ignore
+            .unique()
+            .scalars()
+        )
+
+    return await templates.render_template(
+        db_session,
+        request,
+        "admin_search.html",
+        {
+            "query": query,
+            "results": results,
         },
     )
 
