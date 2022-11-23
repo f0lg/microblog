@@ -25,6 +25,10 @@ def _(event):
 
 
 def main() -> None:
+    theme_file = Path("data/_theme.scss")
+    if not theme_file.exists():
+        theme_file.write_text("// override vars for theming here")
+
     print("Welcome to microblog.pub setup wizard\n")
     print("Generating key...")
     if _KEY_PATH.exists():
